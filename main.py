@@ -72,8 +72,13 @@ def parse_url(bookURL, outpath):
 
     res = soup.find_all('script')
 
-    # print(res)
-    trackscript = res[19]
+    residx = 0
+    for idx, script in enumerate(res):
+        if "tracks = [" in str(script):
+            print("Index is: {}.".format(idx))
+            residx = idx
+
+    trackscript = res[residx]
     trackidx = trackscript.contents[0].find('tracks = [')+9
     end = trackscript.contents[0].find(']', trackidx)+1
     jsonstring = trackscript.contents[0][trackidx:end].replace('\\n', '')
