@@ -2,23 +2,65 @@ from bs4 import BeautifulSoup
 import requests
 import os
 import ast
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+import argparse
+import sys
 
 # implement argparse to receive the output location
-path = os.getcwd()
+# path = os.getcwd()
 # implement argparse to receive the page location
-page = requests.get('https://tokybook.com/the-warden-and-the-wolf-king/')
+# page = requests.get('https://tokybook.com/the-warden-and-the-wolf-king/')
 
 URLBASE = 'https://files02.tokybook.com/audio/'  # file source directory
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="This program downloads all the tracks from the given URL.")
+    parser.add_argument(
+        '--book-url', '-b', help="Enter the URL for the book.", type=str, default='')
+    parser.add_argument(
+        '--output', '-o', help="Location where folder for the book is created." +
+        "Defaults to current directory.",
+        type=str, default=os.getcwd()
+    )
+    parser.add_argument(
+        '--file', '-f', help="File with list of links.", type=str, default='')
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    args = parser.parse_args()
+
+    if not args.book_url:
+        print("Please enter a URL for the Book!")
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    return args
+
+
 def main():
+    inputs = parse_args()
+    parse_url(inputs.book_url, inputs.output)
+    print(inputs)
+
+
+def parse_url(bookURL, outpath):
+    domain = urlparse(bookURL).netloc
+    if not domain == 'tokybook.com':
+        print("Please entere a tokybook URL!")
+        return
+
+    page = requests.get(bookURL)
+
     soup = BeautifulSoup(page.content, 'html.parser')
 
     dirTitle = soup.find_all('h1')[0].get_text().strip()
     # print(dirTitle)
 
-    outputFolder = os.path.join(path, dirTitle)
+    outputFolder = os.path.join(outpath, dirTitle)
     os.mkdir(outputFolder)
 
     res = soup.find_all('script')[19]
