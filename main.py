@@ -44,6 +44,9 @@ def parse_args():
 
 def main():
     inputs = parse_args()
+    if inputs.file:
+        print("Not yet implemented. Please check for an update and try again later.")
+        return
     parse_url(inputs.book_url, inputs.output)
 
 
