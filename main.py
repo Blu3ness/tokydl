@@ -5,6 +5,7 @@ import ast
 from urllib.parse import urljoin, urlparse
 import argparse
 import sys
+import json
 
 # implement argparse to receive the output location
 # path = os.getcwd()
@@ -44,7 +45,6 @@ def parse_args():
 def main():
     inputs = parse_args()
     parse_url(inputs.book_url, inputs.output)
-    print(inputs)
 
 
 def parse_url(bookURL, outpath):
@@ -57,27 +57,51 @@ def parse_url(bookURL, outpath):
 
     soup = BeautifulSoup(page.content, 'html.parser')
 
-    dirTitle = soup.find_all('h1')[0].get_text().strip()
+    # dirTitle = soup.find_all('h1')[0].get_text().strip()
     # print(dirTitle)
 
-    outputFolder = os.path.join(outpath, dirTitle)
-    os.mkdir(outputFolder)
+    book_props = json.loads(
+        "".join(soup.find("script", {"type": "application/ld+json"}).contents))
 
-    res = soup.find_all('script')[19]
+    book_title = get_booktitle(book_props)
+
+    outputFolder = get_outputfolder(outpath, book_title)
+
+    with open(os.path.join(outputFolder, 'properties.json'), 'w', encoding='utf-8') as f:
+        json.dump(book_props, f, ensure_ascii=False, indent=4)
+
+    res = soup.find_all('script')
 
     # print(res)
-
-    trackidx = res.contents[0].find('tracks = [')+9
-    end = res.contents[0].find(']', trackidx)+1
-    jsonstring = res.contents[0][trackidx:end].replace('\\n', '')
+    trackscript = res[19]
+    trackidx = trackscript.contents[0].find('tracks = [')+9
+    end = trackscript.contents[0].find(']', trackidx)+1
+    jsonstring = trackscript.contents[0][trackidx:end].replace('\\n', '')
 
     tracklist = ast.literal_eval(jsonstring)
 
     for track in tracklist:
         if not track['name'] == 'welcome':
-            dirtitle = track['chapter_link_dropbox']
-            pg = urljoin(URLBASE, dirtitle.replace('\\', ''))
+            track_title = track['chapter_link_dropbox']
+            pg = urljoin(URLBASE, track_title.replace('\\', ''))
             download_file(pg, outputFolder)
+
+
+def get_outputfolder(outpath, dirTitle, x=0):
+    folderpath = os.path.join(
+        outpath, (dirTitle + (' ' + str(x) if x != 0 else '')).strip())
+    if not os.path.exists(folderpath):
+        os.mkdir(folderpath)
+        return folderpath
+    else:
+        return get_outputfolder(outpath, dirTitle, x+1)
+
+
+def get_booktitle(book_props):
+    for props in book_props['@graph']:
+        if props['@type'] == "BlogPosting":
+            book_title = props['name']
+            return book_title
 
 
 def download_file(url, outdir):
