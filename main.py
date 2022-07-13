@@ -1,52 +1,57 @@
 from bs4 import BeautifulSoup
 import requests
-import subprocess
-import time
 import os
+import ast
+from urllib.parse import urljoin
 
-page = requests.get('https://tokybook.com/the-warden-and-the-wolf-king/') #replace with url from browser bar
-urlBase = 'https://files02.tokybook.com/audio/' #file source directory
-#check to see if source save file exists
-if os.path.exists("d:\\wget\\save.txt"):
-    os.remove('d:\\wget\\save.txt')
-#downloads webpage source file for parsing
-with open('d:\wget\save.txt', 'wb+') as f:
-    f.write(page.content)
+# implement argparse to receive the output location
+path = os.getcwd()
+# implement argparse to receive the page location
+page = requests.get('https://tokybook.com/the-warden-and-the-wolf-king/')
 
-with open('d:\\wget\\save.txt', 'r+') as f:
-    #check for welcome mp3 and skips
-    for line in f:
-        if '<title>' in line:
-            dirTitle = line[17:-41] #pulls title of the webpage for creating local directory for downloads
-            if " " in dirTitle:
-                dirTitle = dirTitle.replace(" ", "_")
-        if ('                        "chapter_link_dropbox": "https://file.tokybook.com/upload/welcome-you-to-tokybook.mp3",') in line:
-#             print('passing')
-            pass
-        else:
-            #cutting out leading and ending line information not needed for parsing
-            if 'chapter_link_dropbox' in line:
-                new = line[45:-3] #45 characters from the front, 3 characters from the back
-                if ' ' in new: #looking for spaces in filename and replacing with web friendly spacing
-                    newnew = new.replace(" ", "%20")
-                    newnewnew = (urlBase + newnew)
-                    if '\\' in newnewnew: #removing \ that might cause errors in file names. \ doesn't always error
-                        final = newnewnew.replace('\\', "") #final mp3 file name
-#                         print(final)
-                        print(dirTitle)
-                        cwd = os.getcwd() #
-                        os.chdir('d:\\wget\\') #directory with wget.exe
-                        #calls wget with 15 second timeout, makes directory based off dirTitle
-                        subprocess.Popen('wget.exe --timeout=15 --directory-prefix=' + dirTitle + " " + final)
-                        time.sleep(3)
-                    else:
-                        print('error')
-                else: #catch for when there are no spaces in var new, only one case found. same work as above
-                    if '\\' in new:
-                        removal = new.replace('\\', "")
-                        final = (urlBase + removal)
-                        print(final)
-                        cwd = os.getcwd()
-                        os.chdir('d:\\wget\\')
-                        subprocess.Popen('wget.exe --timeout=15 --directory-prefix=' + dirTitle + " " + final)
-                        time.sleep(3)
+URLBASE = 'https://files02.tokybook.com/audio/'  # file source directory
+
+
+def main():
+    soup = BeautifulSoup(page.content, 'html.parser')
+
+    dirTitle = soup.find_all('h1')[0].get_text().strip()
+    # print(dirTitle)
+
+    outputFolder = os.path.join(path, dirTitle)
+    os.mkdir(outputFolder)
+
+    res = soup.find_all('script')[19]
+
+    # print(res)
+
+    trackidx = res.contents[0].find('tracks = [')+9
+    end = res.contents[0].find(']', trackidx)+1
+    jsonstring = res.contents[0][trackidx:end].replace('\\n', '')
+
+    tracklist = ast.literal_eval(jsonstring)
+
+    for track in tracklist:
+        if not track['name'] == 'welcome':
+            dirtitle = track['chapter_link_dropbox']
+            pg = urljoin(URLBASE, dirtitle.replace('\\', ''))
+            download_file(pg, outputFolder)
+
+
+def download_file(url, outdir):
+    # print('Downloading {}'.format(url))
+    local_filename = url.split('/')[-1]
+    # NOTE the stream=True parameter below
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(os.path.join(outdir, local_filename), 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                # If you have chunk encoded response uncomment if
+                # and set chunk_size parameter to None.
+                # if chunk:
+                f.write(chunk)
+    return local_filename
+
+
+if __name__ == "__main__":
+    main()
