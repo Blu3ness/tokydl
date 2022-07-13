@@ -6,7 +6,7 @@ from urllib.parse import urljoin, urlparse
 import argparse
 import sys
 import json
-
+from datetime import datetime
 # implement argparse to receive the output location
 # path = os.getcwd()
 # implement argparse to receive the page location
@@ -67,8 +67,8 @@ def parse_url(bookURL, outpath):
 
     outputFolder = get_outputfolder(outpath, book_title)
 
-    with open(os.path.join(outputFolder, 'properties.json'), 'w', encoding='utf-8') as f:
-        json.dump(book_props, f, ensure_ascii=False, indent=4)
+    tags = soup.find_all(
+        "span", {"class": "tags-links"})[0].get_text()[5:].split(", ")
 
     res = soup.find_all('script')
 
@@ -85,11 +85,24 @@ def parse_url(bookURL, outpath):
 
     tracklist = ast.literal_eval(jsonstring)
 
+    track_props = []
     for track in tracklist:
         if not track['name'] == 'welcome':
             track_title = track['chapter_link_dropbox']
             pg = urljoin(URLBASE, track_title.replace('\\', ''))
+            track_props.append(
+                {"track_number": track['track'], "track_name": track['name'], "track_duration": track['duration']})
             download_file(pg, outputFolder)
+
+    save_properties(outputFolder, book_props, tags, track_props)
+
+
+def save_properties(outputFolder, book_props, tags, track_props):
+    book_props["tags"] = tags
+    book_props["track_properties"] = track_props
+    book_props["save_timestamp"] = str(datetime.now())
+    with open(os.path.join(outputFolder, 'properties.json'), 'w', encoding='utf-8') as f:
+        json.dump(book_props, f, ensure_ascii=False, indent=4)
 
 
 def get_outputfolder(outpath, dirTitle, x=0):
