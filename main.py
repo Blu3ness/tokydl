@@ -14,11 +14,20 @@ from tqdm import tqdm
 URLBASE = 'https://files02.tokybook.com/audio/'  # file source directory
 
 class AudioBook:
-    def __init__(self, title, tags, tracklist, location):
+    def __init__(self, title, tags, tracklist, location, properties, track_properties=None):
         self.title = title
         self.tags = tags
         self.tracklist = tracklist
         self.location = location
+        self.properties = properties
+        self.trackProperties = track_properties
+            
+    def save_properties(self):
+        self.properties["tags"] = self.tags
+        self.properties["track_properties"] = self.trackProperties
+        self.properties["save_timestamp"] = str(datetime.now())
+        with open(os.path.join(self.location, 'properties.json'), 'w', encoding='utf-8') as f:
+            json.dump(self.properties, f, ensure_ascii=False, indent=4)
 
 
 # Parse the arguments passed via the command line.
@@ -49,20 +58,46 @@ def parse_args():
     return args
 
 # Main loop.
-
-
 def main():
     inputs = parse_args()
     if inputs.file:
         print("Not yet implemented. Please check for an update and try again later.")
         return
-    parse_url(inputs.book_url, inputs.output)
+    soup = parse_url(inputs.book_url, inputs.output)
+    book = get_audiobook(soup, inputs.output)
+    download_audiobook(book)
+    
+    book.save_properties()
+    
+    print("-------------------------------")
+    print("Audiobook Grabbed Successfully!")
+    print("-------------------------------")
 
         
-def get_audiobook():
-    pass
+def download_audiobook(book):
+    # loop through the tracks
+    track_props = []
+    
+    progbar = tqdm(book.tracklist, position=0)
+    for track in progbar:
+    # for track in tracklist:
+        if not track['name'] == 'welcome':  # Skip the welcome track
+            track_title = track['chapter_link_dropbox']
+            progbar.set_description("Downloading: {}".format(book.title))
+            # Clean the URL, maybe use URLENCODE later
+            # pg = urljoin(URLBASE, track_title)
+            pg = urljoin(URLBASE, track_title.replace('\\', ''))
+            track_props.append(
+                {"track_number": track['track'], "track_name": track['name'], "track_duration": track['duration']})
+            download_file(pg, book.location , track['name'])
+    progbar.close()
+    print("\nDownload Complete!\n")
+    book.trackProperties = track_props
+    # create and save the properties file to record the properties of the downloaded audio book.
+    # book.save_properties(book)
 
-def get_abook_properties(soup, outpath):
+
+def get_audiobook(soup, outpath):
         # Get the book properties from the ld+json section of the page since it is structured data.
     book_props = json.loads(
         "".join(soup.find("script", {"type": "application/ld+json"}).contents))
@@ -105,7 +140,7 @@ def get_abook_properties(soup, outpath):
     # convert the string of the list to a real list.
     jsonstring = jsonstring.replace('\\','')
     tracklist = ast.literal_eval(jsonstring)
-    return AudioBook(title=book_title, tags=tags, tracklist=tracklist,location=outputFolder)
+    return AudioBook(title=book_title, tags=tags, tracklist=tracklist,location=outputFolder, properties=book_props)
 
 
 # Parse a particular URL and send files to the outpath.
@@ -121,79 +156,16 @@ def parse_url(bookURL, outpath):
     page = requests.get(bookURL)
     soup = BeautifulSoup(page.content, 'html.parser')
 
-    # Get the book properties from the ld+json section of the page since it is structured data.
-    book_props = json.loads(
-        "".join(soup.find("script", {"type": "application/ld+json"}).contents))
-
-    # Get the book title from the book props. This should be a consistent way to get the book title.
-    book_title = get_booktitle(book_props)
-    print("Book Title: %s" % book_title)
+    return soup
 
 
-    # Pull the tags for the book. These could be good for searching later.
-    print("Tags: %s" % soup.find_all("span", {"class": "tags-links"})[0].get_text().strip()[5:])
-    tags = soup.find_all(
-        "span", {"class": "tags-links"})[0].get_text().strip()[5:].split(", ")
-    
-    # Get the outputFolder - makes the folder, if the default exists, it will increment
-    # a number at the end so nothing is written over.
-    outputFolder = get_outputfolder(outpath, book_title)
-    
-    
-    res = soup.find_all('script')
-    # There are a lot of 'script' tags in the page. Loop through them and find the one
-    # with the "tracks" list.
-    
-    residx = 0
-    for idx, script in enumerate(res):
-        if "tracks = [" in str(script):
-            # print("Index is: {}.".format(idx))
-            residx = idx
-
-    trackscript = res[residx]  # get the 'script' tag with the tracks list
-    
-    # get the string index starting the list
-    trackidx = trackscript.contents[0].find('tracks = [')+9
-    end = trackscript.contents[0].find(
-        ']', trackidx)+1  # find the end of the list
-    
-    jsonstring = trackscript.contents[0][trackidx:end].replace(
-        '\\n', '')  # get that string of the list
-
-    # convert the string of the list to a real list.
-    jsonstring = jsonstring.replace('\\','')
-    tracklist = ast.literal_eval(jsonstring)
-
-
-    # loop through the tracks
-    track_props = []
-    
-    progbar = tqdm(tracklist, position=0)
-    for track in progbar:
-    # for track in tracklist:
-        if not track['name'] == 'welcome':  # Skip the welcome track
-            track_title = track['chapter_link_dropbox']
-            progbar.set_description("Downloading: {}".format(book_title))
-            # Clean the URL, maybe use URLENCODE later
-            # pg = urljoin(URLBASE, track_title)
-            pg = urljoin(URLBASE, track_title.replace('\\', ''))
-            track_props.append(
-                {"track_number": track['track'], "track_name": track['name'], "track_duration": track['duration']})
-            download_file(pg, outputFolder, track['name'])
-    progbar.close()
-    print("\nDownload Complete!\n")
-
-    # create and save the properties file to record the properties of the downloaded audio book.
-    save_properties(outputFolder, book_props, tags, track_props)
-
-
-def save_properties(outputFolder, book_props, tags, track_props):
-    # Add some more information to the properties that are found on the page.
-    book_props["tags"] = tags
-    book_props["track_properties"] = track_props
-    book_props["save_timestamp"] = str(datetime.now())
-    with open(os.path.join(outputFolder, 'properties.json'), 'w', encoding='utf-8') as f:
-        json.dump(book_props, f, ensure_ascii=False, indent=4)
+# def save_properties(book):
+#     # Add some more information to the properties that are found on the page.
+#     book_props["tags"] = tags
+#     book_props["track_properties"] = track_props
+#     book_props["save_timestamp"] = str(datetime.now())
+#     with open(os.path.join(outputFolder, 'properties.json'), 'w', encoding='utf-8') as f:
+#         json.dump(book_props, f, ensure_ascii=False, indent=4)
 
 
 def get_outputfolder(outpath, dirTitle="audio-", x=0):
