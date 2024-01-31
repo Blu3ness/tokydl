@@ -45,6 +45,31 @@ class AudioBook:
             json.dump(self.properties, f, ensure_ascii=False, indent=4)
 
 
+class Series:
+    def __init__(
+        self,
+        title,
+        books,
+        location,
+        properties,
+    ):
+        self.title = title
+        self.books = books
+        self.location = location
+        self.properties = properties
+
+    def save_properties(self):
+        self.properties["title"] = self.title
+        self.properties["books"] = self.books
+        self.properties["count"] = len(self.books)
+        self.properties["save_timestamp"] = str(datetime.now())
+
+        with open(
+            os.path.join(self.location, "series.json"), "w", encoding="utf-8"
+        ) as f:
+            json.dump(self.properties, f, ensure_ascii=False, indent=4)
+
+
 # Parse the arguments passed via the command line.
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -87,8 +112,6 @@ def parse_args():
 
 
 # Main loop.
-
-
 def main():
     inputs = parse_args()
     if inputs.file:
@@ -107,59 +130,16 @@ def main():
     url_list = []
 
     if inputs.series_url:
-        series_title = ""
         if not path_parts[0] == "tag":
             print("You did not enter a 'series' URL.")
             return
         print("Getting Series Information and links....")
-        pageFound = True
-        pgIDX = 0
-        books = []
-        series_props = {}
 
-        while pageFound:
-            pgIDX += 1
-            pgURL = urljoin(url + "/", "page/" + str(pgIDX))
-            # print(pgURL)
+        series = get_series(url, output_folder)
 
-            soup = parse_url(pgURL)
-            title = soup.find("title").text
+        series.save_properties()
 
-            # Get the series properties from the ld+json section of the page since it is structured data.
-            if not series_title:
-                series_props = json.loads(
-                    "".join(
-                        soup.find("script", {"type": "application/ld+json"}).contents
-                    )
-                )
-                series_title = get_seriestitle(series_props)
-
-            if "Page not found" in title:
-                pageFound = False
-            else:
-                links = soup.find_all(
-                    "a",
-                    {"href": True, "rel": "bookmark"},
-                )
-                for link in links:
-                    book = {}
-                    book["link"] = link["href"]
-                    book["title"] = link.get_text()
-                    # print(book)
-                    books.append(book)
-
-        output_folder = get_outputfolder(output_folder, series_title)
-
-        # Save the Metadata
-        series_props["title"] = series_title
-        series_props["books"] = books
-        series_props["count"] = len(books)
-        with open(
-            os.path.join(output_folder, "series.json"), "w", encoding="utf-8"
-        ) as f:
-            json.dump(series_props, f, ensure_ascii=False, indent=4)
-
-        url_list = [books["link"] for books in books]
+        url_list = [books["link"] for books in series.books]
         # print(url_list)
         # time.sleep(5)
 
@@ -184,6 +164,48 @@ def main():
 
     print("All Books Grabbed Successfully!")
     print("-------------------------------")
+
+
+def get_series(url, output_folder):
+    books = []
+    series_title = ""
+    pageFound = True
+    pgIDX = 0
+
+    while pageFound:
+        pgIDX += 1
+        pgURL = urljoin(url + "/", "page/" + str(pgIDX))
+        # print(pgURL)
+
+        soup = parse_url(pgURL)
+        title = soup.find("title").text
+
+        # Get the series properties from the ld+json section of the page since it is structured data.
+        if not series_title:
+            series_props = json.loads(
+                "".join(soup.find("script", {"type": "application/ld+json"}).contents)
+            )
+            series_title = get_seriestitle(series_props)
+
+        if "Page not found" in title:
+            pageFound = False
+        else:
+            links = soup.find_all(
+                "a",
+                {"href": True, "rel": "bookmark"},
+            )
+            for link in links:
+                book = {}
+                book["link"] = link["href"]
+                book["title"] = link.get_text()
+                # print(book)
+                books.append(book)
+
+    output_folder = get_outputfolder(output_folder, series_title)
+
+    return Series(
+        title=series_title, books=books, properties=series_props, location=output_folder
+    )
 
 
 def download_audiobook(book):
