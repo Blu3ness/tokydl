@@ -111,7 +111,7 @@ def main():
         if not path_parts[0] == "tag":
             print("You did not enter a 'series' URL.")
             return
-
+        print("Getting Series Information and links....")
         pageFound = True
         pgIDX = 0
         books = []
@@ -145,11 +145,12 @@ def main():
                     book = {}
                     book["link"] = link["href"]
                     book["title"] = link.get_text()
-                    print(book)
+                    # print(book)
                     books.append(book)
 
         output_folder = get_outputfolder(output_folder, series_title)
 
+        # Save the Metadata
         series_props["title"] = series_title
         series_props["books"] = books
         series_props["count"] = len(books)
@@ -172,7 +173,7 @@ def main():
         print("Retrieving book from {}.".format(bookurl))
         soup = parse_url(bookurl)
 
-        book = get_audiobook(soup, inputs.output)
+        book = get_audiobook(soup, output_folder)
         download_audiobook(book)
 
         book.save_properties()
